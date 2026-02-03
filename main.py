@@ -71,8 +71,11 @@ def safe_extract_message(raw_bytes: bytes) -> str:
 # -----------------------------
 @app.api_route("/", methods=["GET", "HEAD"])
 async def health_check(request: Request):
-    return {"status": "active", "system": "Agentic Honey-Pot", "version": "final"}
-
+    return {
+        "status": "active",
+        "system": "Agentic Honey-Pot",
+        "version": "final-v999"
+    }
 # -----------------------------
 # ANALYZE (GET + HEAD)
 # -----------------------------
