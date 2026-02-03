@@ -1,13 +1,8 @@
 import os
-import google.generativeai as genai
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 load_dotenv()
-
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-model = genai.GenerativeModel("gemini-1.5-flash")
 
 SYSTEM_PROMPT = """
 YOU ARE PART OF A NATIONAL-LEVEL HACKATHON PROJECT.
@@ -46,10 +41,22 @@ Return ONLY the human-like reply.
 No explanation. No JSON.
 """
 
+FALLBACK_REPLY = "Main thoda confuse hoon, ek baar phir se samjha sakte ho? UPI ID ya link bhej do please."
+
 def generate_response(scam_message: str) -> str:
     try:
-        prompt = f"""
-{SYSTEM_PROMPT}
+        key = os.getenv("GEMINI_API_KEY")
+
+        # ✅ Key missing -> no crash
+        if not key:
+            return FALLBACK_REPLY
+
+        # ✅ Configure inside function (safe on Render)
+        genai.configure(api_key=key)
+
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        prompt = f"""{SYSTEM_PROMPT}
 
 Incoming message:
 {scam_message}
@@ -57,6 +64,9 @@ Incoming message:
 Reply like a real human:
 """
         response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        return "Main thoda confuse hoon, ek baar phir se samjha sakte ho?"
+        text = (response.text or "").strip()
+        return text if text else FALLBACK_REPLY
+
+    except Exception:
+        # ✅ Any error (quota, network, etc) -> no crash
+        return FALLBACK_REPLY
