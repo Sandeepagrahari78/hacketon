@@ -1,24 +1,35 @@
-print("🔥🔥 AGENTIC HONEY-POT API RUNNING 🔥🔥")
-
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Header, HTTPException
 from pydantic import BaseModel
 from agent import generate_response
 from datetime import datetime
+import os
 import re
 
-app = FastAPI(title="Agentic Honey-Pot API")
+app = FastAPI(title="Agentic Honey-Pot API", version="final")
 
-# -----------------------------
-# Input Model
-# -----------------------------
+# =============================
+# CONFIG
+# =============================
+API_KEY = os.getenv("API_KEY")  # Render / Server ENV variable
+
+# =============================
+# INPUT MODEL
+# =============================
 class MessageInput(BaseModel):
     message: str
 
-# -----------------------------
-# API Endpoint
-# -----------------------------
+# =============================
+# MAIN API ENDPOINT
+# =============================
 @app.post("/analyze")
-async def analyze_message(input_data: MessageInput, request: Request):
+async def analyze_message(
+    input_data: MessageInput,
+    request: Request,
+    x_api_key: str = Header(None)
+):
+    # 🔐 API KEY AUTH
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
 
     message = input_data.message
     msg_lower = message.lower()
@@ -39,11 +50,19 @@ async def analyze_message(input_data: MessageInput, request: Request):
     # 3️⃣ AI Human-like Reply
     reply = generate_response(message)
 
-    # 4️⃣ Metadata (SAFE + ALLOWED)
+    # 4️⃣ Metadata
     timestamp = datetime.now().isoformat()
     request_ip = request.client.host if request.client else None
 
-    # 5️⃣ FINAL JSON RESPONSE (SUBMISSION FORMAT)
+    # 5️⃣ Confidence Score
+    if is_scam and (upi_ids or links or bank_accounts):
+        confidence = 0.95
+    elif is_scam:
+        confidence = 0.7
+    else:
+        confidence = 0.2
+
+    # 6️⃣ FINAL RESPONSE (HACKATHON FORMAT)
     return {
         "is_scam": is_scam,
         "reply": reply,
@@ -57,16 +76,16 @@ async def analyze_message(input_data: MessageInput, request: Request):
             "request_origin_ip": request_ip,
             "geo_location": None
         },
-        "confidence_score": 0.9 if is_scam else 0.3
+        "confidence_score": confidence
     }
 
-# -----------------------------
-# Health Check
-# -----------------------------
+# =============================
+# HEALTH CHECK
+# =============================
 @app.get("/")
 async def root():
     return {
         "status": "active",
         "system": "Agentic Honey-Pot",
-        "version": "final"
+        "message": "API is running successfully"
     }
