@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from datetime import datetime
 import re
+import json
 
 app = FastAPI(title="Agentic Honey-Pot API", version="final")
 
@@ -36,6 +37,35 @@ def build_response(message: str, request: Request):
         "confidence_score": 0.9 if is_scam else 0.3
     }
 
+def safe_extract_message(raw_bytes: bytes) -> str:
+    # default message if body empty / invalid
+    message = "System validation ping"
+
+    if not raw_bytes:
+        return message
+
+    try:
+        text = raw_bytes.decode("utf-8", errors="ignore").strip()
+        if not text:
+            return message
+
+        # try JSON parse
+        data = json.loads(text)
+
+        if isinstance(data, dict):
+            return data.get("message") or data.get("text") or data.get("input") or message
+        if isinstance(data, str) and data.strip():
+            return data.strip()
+
+        return message
+    except Exception:
+        # not JSON -> treat as plain text
+        try:
+            text = raw_bytes.decode("utf-8", errors="ignore").strip()
+            return text if text else message
+        except Exception:
+            return message
+
 # -----------------------------
 # HEALTH CHECK (GET + HEAD)
 # -----------------------------
@@ -44,28 +74,17 @@ async def health_check(request: Request):
     return {"status": "active", "system": "Agentic Honey-Pot", "version": "final"}
 
 # -----------------------------
-# ANALYZE (GET + HEAD for testers)
+# ANALYZE (GET + HEAD)
 # -----------------------------
 @app.api_route("/analyze", methods=["GET", "HEAD"])
 async def analyze_get(request: Request):
-    # tester ke liye default response
     return build_response("System validation ping", request)
 
 # -----------------------------
-# ANALYZE (POST real)
+# ANALYZE (POST)
 # -----------------------------
 @app.post("/analyze")
 async def analyze_post(request: Request):
-    message = "System validation ping"
-
-    # body safe parse (empty/invalid -> no crash)
-    try:
-        body = await request.json()
-        if isinstance(body, dict):
-            message = body.get("message") or body.get("text") or body.get("input") or message
-        elif isinstance(body, str) and body.strip():
-            message = body.strip()
-    except Exception:
-        pass
-
+    raw = await request.body()          # ✅ never fails
+    message = safe_extract_message(raw)  # ✅ never fails
     return build_response(message, request)
