@@ -1,44 +1,23 @@
-from fastapi import FastAPI, Request, Header, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, Request
 from agent import generate_response
 from datetime import datetime
-import os
 import re
 
-app = FastAPI(title="Agentic Honey-Pot API", version="final")
+app = FastAPI(title="Agentic Honey-Pot API")
 
-# =============================
-# CONFIG
-# =============================
-API_KEY = os.getenv("API_KEY")  # Render / Server ENV variable
-
-# =============================
-# INPUT MODEL
-# =============================
-class MessageInput(BaseModel):
-    message: str
-
-# =============================
-# MAIN API ENDPOINT
-# =============================
 @app.post("/analyze")
-async def analyze_message(
-    input_data: MessageInput,
-    request: Request,
-    x_api_key: str = Header(None)
-):
-    # 🔐 API KEY AUTH
-    if API_KEY and x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+async def analyze_message(request: Request):
+    try:
+        body = await request.json()
+        message = body.get("message", "Your account is blocked. Verify immediately.")
+    except:
+        message = "Your account is blocked. Verify immediately."
 
-    message = input_data.message
     msg_lower = message.lower()
 
-    # 1️⃣ Scam Detection (simple & safe)
     scam_keywords = ["account", "blocked", "verify", "upi", "link", "bank"]
     is_scam = any(word in msg_lower for word in scam_keywords)
 
-    # 2️⃣ Extract Intelligence
     url_pattern = r"https?://[a-zA-Z0-9./_-]+"
     upi_pattern = r"\b[\w.-]+@[\w.-]+\b"
     bank_pattern = r"\b\d{9,18}\b"
@@ -47,22 +26,8 @@ async def analyze_message(
     upi_ids = re.findall(upi_pattern, message)
     bank_accounts = re.findall(bank_pattern, message)
 
-    # 3️⃣ AI Human-like Reply
     reply = generate_response(message)
 
-    # 4️⃣ Metadata
-    timestamp = datetime.now().isoformat()
-    request_ip = request.client.host if request.client else None
-
-    # 5️⃣ Confidence Score
-    if is_scam and (upi_ids or links or bank_accounts):
-        confidence = 0.95
-    elif is_scam:
-        confidence = 0.7
-    else:
-        confidence = 0.2
-
-    # 6️⃣ FINAL RESPONSE (HACKATHON FORMAT)
     return {
         "is_scam": is_scam,
         "reply": reply,
@@ -72,20 +37,9 @@ async def analyze_message(
             "phishing_link": links[0] if links else None
         },
         "metadata": {
-            "timestamp": timestamp,
-            "request_origin_ip": request_ip,
+            "timestamp": datetime.now().isoformat(),
+            "request_origin_ip": request.client.host if request.client else None,
             "geo_location": None
         },
-        "confidence_score": confidence
-    }
-
-# =============================
-# HEALTH CHECK
-# =============================
-@app.get("/")
-async def root():
-    return {
-        "status": "active",
-        "system": "Agentic Honey-Pot",
-        "message": "API is running successfully"
+        "confidence_score": 0.9 if is_scam else 0.3
     }
