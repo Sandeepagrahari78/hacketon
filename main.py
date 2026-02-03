@@ -1,6 +1,4 @@
 from fastapi import FastAPI, Request
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
 import re
 
@@ -11,30 +9,38 @@ app = FastAPI(title="Agentic Honey-Pot API", version="final")
 # -----------------------------
 @app.get("/")
 async def health_check():
-    return {
-        "status": "active",
-        "system": "Agentic Honey-Pot",
-        "version": "final"
-    }
+    return {"status": "active", "system": "Agentic Honey-Pot", "version": "final"}
+
 
 # -----------------------------
-# Input Model (OPTIONAL message)
-# -----------------------------
-class MessageInput(BaseModel):
-    message: Optional[str] = "Hello"
-
-# -----------------------------
-# MAIN API
+# MAIN API (NO 422 GUARANTEE)
 # -----------------------------
 @app.post("/analyze")
-async def analyze_message(input_data: MessageInput, request: Request):
+async def analyze_message(request: Request):
 
-    message = input_data.message or "Hello"
+    # Default message (works even if GUVI sends empty body)
+    message = "System validation ping. Please share details."
+
+    # Try to read JSON body safely
+    try:
+        body = await request.json()
+
+        if isinstance(body, dict):
+            message = body.get("message") or body.get("text") or body.get("input") or message
+        elif isinstance(body, str) and body.strip():
+            message = body.strip()
+
+    except Exception:
+        # Body missing / invalid JSON -> keep default message
+        pass
+
     msg_lower = message.lower()
 
+    # Scam detection
     scam_keywords = ["account", "blocked", "verify", "upi", "link", "bank", "urgent"]
     is_scam = any(word in msg_lower for word in scam_keywords)
 
+    # Extraction
     url_pattern = r"https?://[a-zA-Z0-9./_-]+"
     upi_pattern = r"\b[\w.-]+@[\w.-]+\b"
     bank_pattern = r"\b\d{9,18}\b"
