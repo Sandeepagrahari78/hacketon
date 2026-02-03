@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from agent import generate_response
 from datetime import datetime
 import re
-from typing import Optional
 
 app = FastAPI(
     title="Agentic Honey-Pot API",
@@ -13,7 +12,7 @@ app = FastAPI(
 )
 
 # -----------------------------
-# HEALTH CHECK
+# HEALTH CHECK (VERY IMPORTANT)
 # -----------------------------
 @app.get("/")
 async def health_check():
@@ -24,21 +23,30 @@ async def health_check():
     }
 
 # -----------------------------
-# Input Model (POST support)
+# OPTIONAL INPUT MODEL
 # -----------------------------
 class MessageInput(BaseModel):
-    message: Optional[str] = None
-
+    message: str | None = None   # 👈 NOT mandatory now
 
 # -----------------------------
-# CORE LOGIC (REUSED)
+# MAIN API ENDPOINT
 # -----------------------------
-def process_message(message: str, request: Request):
+@app.post("/analyze")
+async def analyze_message(input_data: MessageInput = None, request: Request = None):
+
+    # ✅ Body aaye ya na aaye — dono handle
+    if input_data and input_data.message:
+        message = input_data.message
+    else:
+        message = "Your bank account will be blocked. Verify immediately using this link."
+
     msg_lower = message.lower()
 
+    # 1️⃣ Scam Detection
     scam_keywords = ["account", "blocked", "verify", "upi", "link", "bank", "urgent"]
     is_scam = any(word in msg_lower for word in scam_keywords)
 
+    # 2️⃣ Extract Intelligence
     url_pattern = r"https?://[a-zA-Z0-9./_-]+"
     upi_pattern = r"\b[\w.-]+@[\w.-]+\b"
     bank_pattern = r"\b\d{9,18}\b"
@@ -47,8 +55,14 @@ def process_message(message: str, request: Request):
     upi_ids = re.findall(upi_pattern, message)
     bank_accounts = re.findall(bank_pattern, message)
 
+    # 3️⃣ AI Reply
     reply = generate_response(message)
 
+    # 4️⃣ Metadata
+    timestamp = datetime.utcnow().isoformat()
+    request_ip = request.client.host if request and request.client else None
+
+    # 5️⃣ FINAL RESPONSE (GUVI FORMAT)
     return {
         "is_scam": is_scam,
         "reply": reply,
@@ -58,37 +72,9 @@ def process_message(message: str, request: Request):
             "phishing_link": links[0] if links else None
         },
         "metadata": {
-            "timestamp": datetime.utcnow().isoformat(),
-            "request_origin_ip": request.client.host if request.client else None,
+            "timestamp": timestamp,
+            "request_origin_ip": request_ip,
             "geo_location": None
         },
         "confidence_score": 0.9 if is_scam else 0.3
     }
-
-
-# -----------------------------
-# GET ANALYZE (GUVI TESTER)
-# -----------------------------
-@app.get("/analyze")
-async def analyze_get(request: Request):
-    return process_message(
-        "System test request for honeypot validation.",
-        request
-    )
-
-
-# -----------------------------
-# POST ANALYZE (REAL USE)
-# -----------------------------
-@app.post("/analyze")
-async def analyze_post(
-    request: Request,
-    input_data: Optional[MessageInput] = None
-):
-    message = (
-        input_data.message
-        if input_data and input_data.message
-        else "System test request for honeypot validation."
-    )
-
-    return process_message(message, request)
